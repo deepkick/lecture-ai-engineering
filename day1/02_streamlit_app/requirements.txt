@@ -1,6 +1,6 @@
 streamlit
 torch
-transformers
+transformers>=4.50.0
 pandas
 nltk
 scikit-learn
