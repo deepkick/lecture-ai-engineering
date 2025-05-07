@@ -121,18 +121,25 @@
 
 #### 1. Llama-3 量子化ロード  
 ```python
+# モデル(Llama3)の読み込み
+from transformers import AutoModelForCausalLM, AutoTokenizer, BitsAndBytesConfig
+model_name = "meta-llama/Meta-Llama-3-8B-Instruct"
+tokenizer = AutoTokenizer.from_pretrained(model_name)
+
 bnb_config = BitsAndBytesConfig(
     load_in_4bit=True,
     bnb_4bit_compute_dtype=torch.float16,
     bnb_4bit_quant_type="nf4",
+    bnb_4bit_use_double_quant=False,
 )
 
 model = AutoModelForCausalLM.from_pretrained(
-    model_name,
-    device_map="auto",
-    quantization_config=bnb_config,
-    torch_dtype=torch.bfloat16,
-)
+            model_name,
+            device_map="auto",
+            quantization_config=bnb_config,
+            torch_dtype=torch.bfloat16,
+        )
+
 tokenizer.pad_token = tokenizer.eos_token          # 警告抑制
 ```
 
@@ -140,55 +147,68 @@ tokenizer.pad_token = tokenizer.eos_token          # 警告抑制
 
 ```python
 def ask_baseline(q: str) -> str:
+    """Meta-Llama-3 8B Instruct に質問し、日本語で一文回答を得る"""
     messages = [
-        {"role": "system",
-         "content": "質問に回答してください。日本語で簡潔に。"},
-        {"role": "user", "content": q},
+        {"role": "system", "content": "質問に回答してください。あなたは日本語で回答するAIアシスタントです。英語では答えず、必ず日本語で簡潔に回答してください。"},
+        {"role": "user",   "content": q},
     ]
-    ids = tokenizer.apply_chat_template(
-        messages, add_generation_prompt=True,
+    input_ids = tokenizer.apply_chat_template(
+        messages,
+        add_generation_prompt=True,
         return_tensors="pt"
     ).to(model.device)
 
-    out = model.generate(
-        ids,
-        eos_token_id=[tokenizer.eos_token_id,
-                      tokenizer.convert_tokens_to_ids("<|eot_id|>")],
+    outputs = model.generate(
+        input_ids,
+        # max_new_tokens=256,
+        eos_token_id=[
+            tokenizer.eos_token_id,
+            tokenizer.convert_tokens_to_ids("<|eot_id|>")
+        ],
         do_sample=False,
     )
-    return tokenizer.decode(out[0][ids.shape[-1]:], skip_special_tokens=True).strip()
+
+    response_ids = outputs[0][input_ids.shape[-1]:]
+    return tokenizer.decode(response_ids, skip_special_tokens=True).strip()
 ```
 
 #### 3. サマリー → 文分割 → 埋め込み
 
 ```python
 documents = []
-for idx, txt in enumerate(summary_texts, 1):
-    label = f"[S{idx}] "
-    documents.extend(label + s.strip() for s in txt.split("。") if s.strip())
+for idx, txt in enumerate(summary_texts, start=1):
+    label = f"[S{idx}] "                     # 質問1→[S1] など識別用
+    sentences = [label + s.strip()
+                 for s in txt.split("。") if s.strip()]
+    documents.extend(sentences)
 
-document_embeddings = emb_model.encode(documents, show_progress_bar=True)
+document_embeddings = emb_model.encode(
+    documents, show_progress_bar=True
+)
 ```
 
 #### 4. RAG 推論関数 `ask_rag`
 
 ```python
-def ask_rag(q, topk=10):
+topk_num=10
+def ask_rag(q, topk=topk_num):
     q_emb  = emb_model.encode([q], prompt_name="query")
     scores = (q_emb @ document_embeddings.T) * 100
-    refs   = "\n".join("* " + documents[i]
-                       for i in scores.argsort()[0][::-1][:topk])
-
+    refs   = "\n".join(
+        "* " + documents[i]
+        for i in scores.argsort()[0][::-1][:topk]
+    )
     messages = [
         {"role": "system",
-         "content": "日本語で回答。必ず参考資料を活用して簡潔・事実ベースで答える。"},
+         "content": "あなたは日本語で回答するAIアシスタントです。"
+                    "必ず参考資料を活用し、簡潔かつ事実ベースで答えてください。"},
         {"role": "user",
          "content": f"[参考資料]\n{refs}\n\n[質問] {q}"},
     ]
-    ids = tokenizer.apply_chat_template(messages,
-                                        add_generation_prompt=True,
-                                        padding=False,
-                                        return_tensors="pt").to(model.device)
+    ids = tokenizer.apply_chat_template(
+        messages, add_generation_prompt=True,
+        padding=False, return_tensors="pt"
+    ).to(model.device)
 
     out = model.generate(
         ids, max_new_tokens=256,
@@ -197,26 +217,116 @@ def ask_rag(q, topk=10):
                       tokenizer.convert_tokens_to_ids("<|eot_id|>")],
         do_sample=False
     )
-    return tokenizer.decode(out[0][ids.shape[-1]:], skip_special_tokens=True).strip()
+    return tokenizer.decode(out[0][ids.shape[-1]:],
+                            skip_special_tokens=True).strip()
+
+
+rag_results = []
+
+for q in questions:
+    ans = ask_rag(q)
+    rag_results.append({"question": q, "answer": ans})
+    print("="*80)
+    print("Q:", q)
+    print("RAG:", ans)
+
+# 必要なら後で JSON / CSV に保存
+pd.DataFrame(rag_results).to_csv("rag_answers.csv", index=False)
 ```
 
 #### 5. GPT-4o 自動採点 (2 テンプレ平均)
 
 ```python
+from openai import OpenAI
+from google.colab import userdata
+client = OpenAI(api_key=userdata.get("OPENAI_API_KEY"), max_retries=5, timeout=60)
+
+def openai_generator(query):
+
+        messages = [
+                    {
+                        "role": "user",
+                        "content": query
+                    }
+                ]
+
+        response = client.chat.completions.create(
+            model="gpt-4o-mini",
+            messages=messages
+        )
+        return response.choices[0].message.content
+
 def evaluate_answer_accuracy(query, response, reference):
-    score1 = int(openai_generator(template1.format(
-        query=query, sentence_inference=response,
-        sentence_true=reference)))
-    score2 = int(openai_generator(template2.format(
-        query=query, sentence_inference=reference,
-        sentence_true=response)))
+
+    template_accuracy1 = (
+          "Instruction: You are a world class state of the art assistant for rating "
+          "a User Answer given a Question. The Question is completely answered by the Reference Answer.\n"
+          "Say 4, if User Answer is full contained and equivalent to Reference Answer"
+          "in all terms, topics, numbers, metrics, dates and units.\n"
+          "Say 2, if User Answer is partially contained and almost equivalent to Reference Answer"
+          "in all terms, topics, numbers, metrics, dates and units.\n"
+          "Say 0, if User Answer is not contained in Reference Answer or not accurate in all terms, topics,"
+          "numbers, metrics, dates and units or the User Answer do not answer the question.\n"
+          "Do not explain or justify your rating. Your rating must be only 4, 2 or 0 according to the instructions above.\n"
+          "Even small discrepancies in meaning, terminology, directionality, or implication must result in a lower score. Only rate 4 if the User Answer is a complete and precise match to the Reference Answer in every aspect.\n"
+          "### Question: {query}\n"
+          "### {answer0}: {sentence_inference}\n"
+          "### {answer1}: {sentence_true}\n"
+          "The rating is:\n"
+      )
+    template_accuracy2 = (
+          "I will rate the User Answer in comparison to the Reference Answer for a given Question.\n"
+          "A rating of 4 indicates that the User Answer is entirely consistent with the Reference Answer, covering all aspects, topics, numbers, metrics, dates, and units.\n"
+          "A rating of 2 signifies that the User Answer is mostly aligned with the Reference Answer, with minor discrepancies in some areas.\n"
+          "A rating of 0 means that the User Answer is either inaccurate, incomplete, or unrelated to the Reference Answer, or it fails to address the Question.\n"
+          "I will provide the rating without any explanation or justification, adhering to the following scale: 0 (no match), 2 (partial match), 4 (exact match).\n"
+          "Even minor inconsistencies in meaning, terminology, emphasis, or factual detail should prevent a rating of 4. Only assign a 4 if the User Answer exactly and unambiguously matches the Reference Answer in every respect."
+          "Do not explain or justify my rating. My rating must be only 4, 2 or 0 only.\n\n"
+          "Question: {query}\n\n"
+          "{answer0}: {sentence_inference}\n\n"
+          "{answer1}: {sentence_true}\n\n"
+          "Rating: "
+      )
+
+    score1 = openai_generator(
+                template_accuracy1.format(
+                      query=query,
+                      answer0="User Answer",
+                      answer1="Reference Answer",
+                      sentence_inference=response,
+                      sentence_true=reference,
+                    )
+                )
+    try:
+      score1 = int(score1)
+    except:
+      print("Failed")
+      score1 = 0
+
+    score2 = openai_generator(
+                template_accuracy2.format(
+                        query=query,
+                        answer0="Reference Answer",
+                        answer1="User Answer",
+                        sentence_inference=reference,
+                        sentence_true=response,
+                    )
+                  )
+
+    try:
+      score2 = int(score2)
+    except:
+      print("Failed")
+      score2 = 0
+
+
     return (score1 + score2) / 2
 ```
 
 #### 参照元
 
 コードはすべて`ai_engineering_03_option_homework.py` から抽出。
-</details>
+</details> <br>
 
 
 
