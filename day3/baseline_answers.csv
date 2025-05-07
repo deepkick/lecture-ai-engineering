@@ -1,0 +1,9 @@
+question,answer
+GenCast のバックテストでは ECMWF ENS といくつのターゲットを比較し、何 % で上回りましたか？,"GenCastのバックテストでは、ECMWF ENSのターゲットとして、ECMWFの運営するモデル（ECMWFモデル）と、米国国立海洋気象局（NOAA）が運営するモデル（CFSv2モデル）を比較しています。
+
+結果として、ECMWF ENSは、ECMWFモデルに対して約80%、CFSv2モデルに対して約60%の上回りを示しました。"
+GenCast は 1 つの予報につき最低何本のアンサンブルメンバーを生成しますか？,GenCastは、1つの予報につき最低4本のアンサンブルメンバーを生成します。
+GraphCast は一度に最大何日先までの予報を生成できますか？,GraphCastは、一次元の気象データを基に、最大7日先までの予報を生成することができます。
+GraphCast は台風 Batsiang の最大風速を ECMWF-HRES より何時間早く捕捉しましたか？,GraphCastは、台風Batsiangの最大風速をECMWF-HRESより約12時間早く捕捉しました。
+Trump Tariff 2.0 の基本関税率はいくらですか？,Trump Tariff 2.0の基本関税率は25%です。
+Trump Tariff 2.0 で中国製品に課される最大制裁関税率はいくらですか？,Trump Tariff 2.0（2020年9月の新たな関税）では、中国製品に対する最大の関税率は25%です。
