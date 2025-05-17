@@ -1,9 +1,11 @@
 import os
 import pytest
 import pandas as pd
-import numpy as np
+
+# import numpy as np
 import great_expectations as gx
-from sklearn.datasets import fetch_openml
+
+# from sklearn.datasets import fetch_openml
 import warnings
 
 # 警告を抑制
