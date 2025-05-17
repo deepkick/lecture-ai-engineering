@@ -1,5 +1,6 @@
 # main.py  --- 手元実行／ベースライン生成用ワンショットスクリプト
-import json, pathlib
+import json
+import pathlib
 from core import load_model, load_test_data, evaluate
 
 if __name__ == "__main__":

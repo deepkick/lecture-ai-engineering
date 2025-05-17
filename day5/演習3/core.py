@@ -1,5 +1,7 @@
 # core.py  --- 再利用しやすいユーティリティ
-import time, joblib, pandas as pd
+import time
+import joblib
+import pandas as pd
 from sklearn.metrics import accuracy_score
 
 MODEL_PATH = "./models/titanic_model.pkl"

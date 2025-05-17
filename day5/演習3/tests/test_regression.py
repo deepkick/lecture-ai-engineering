@@ -1,4 +1,5 @@
-import json, pathlib
+import json
+import pathlib
 from day5.演習3.core import load_model, load_test_data, evaluate
 
 BASE = json.loads(pathlib.Path("metrics_baseline.json").read_text())
