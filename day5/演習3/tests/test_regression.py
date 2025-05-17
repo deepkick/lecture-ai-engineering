@@ -2,7 +2,8 @@ import json
 import pathlib
 from day5.演習3.core import load_model, load_test_data, evaluate
 
-BASE = json.loads(pathlib.Path("metrics_baseline.json").read_text())
+ROOT = pathlib.Path(__file__).parent.parent
+BASE = json.loads((ROOT / "metrics_baseline.json").read_text())
 
 
 def test_accuracy_no_regression():
