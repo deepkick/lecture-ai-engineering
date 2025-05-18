@@ -1,6 +1,7 @@
 """
 テスト開始時にリポジトリ直下(lecture-ai-engineering/)を PYTHONPATH に追加する。
 """
+
 import sys
 from pathlib import Path
 
