@@ -5,10 +5,8 @@ import pandas as pd
 import pathlib
 from sklearn.metrics import accuracy_score
 
-MODEL_PATH = "./models/titanic_model.pkl"
-
-
-ROOT = pathlib.Path(__file__).parent  # day5/演習3/
+ROOT = pathlib.Path(__file__).resolve().parent  # day5/演習3
+MODEL_PATH = ROOT / "models" / "titanic_model.pkl"
 
 
 def load_test_data():
