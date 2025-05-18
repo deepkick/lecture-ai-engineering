@@ -11,7 +11,7 @@ import time
 from day5.演習3.core import load_model, load_test_data
 
 # ── ベースライン指標をロード ──────────────────────────
-ROOT = pathlib.Path(__file__).resolve().parents[2]  # repo root
+ROOT = pathlib.Path(__file__).resolve().parents[1]
 BASE = json.loads((ROOT / "metrics_baseline.json").read_text())
 
 
